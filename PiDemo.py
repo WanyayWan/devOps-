@@ -6,8 +6,7 @@ from hal import hal_led as led_ctrl
 from hal import hal_usonic as usonic
 from hal import hal_servo as servo
 from hal import hal_adc as potentio
-from picamera2.encoders import H264Encoder
-from picamera2 import Picamera2, Preview as picam2
+from picamera2 import Picamera2
 import time
 from telegram import Bot
 
@@ -28,6 +27,69 @@ lcd.lcd_clear()
 # Initialize Telegram Bot
 bot = Bot(token=BOT_TOKEN)
 
+# Admin access variables
+ADMIN_PASSCODE = "1234"  # Replace with a secure passcode
+admin_logged_in = False  # Flag to track admin access
+entered_passcode = ""    # Buffer to store passcode input
+
+def admin_lcd_output():
+    lcd.lcd_display_string("Enter Admin Code:", 1)
+    lcd.lcd_display_string("*" * len(entered_passcode), 2)  # Mask input with asterisks
+
+# Function to handle admin login
+def handle_admin_login(key):
+    global entered_passcode, admin_logged_in
+
+    # Add the key to the entered passcode
+    entered_passcode += str(key)
+    lcd.lcd_clear()
+    admin_lcd_output()
+
+    # Check if the passcode is complete
+    if len(entered_passcode) == len(ADMIN_PASSCODE):
+        if entered_passcode == ADMIN_PASSCODE:
+            admin_logged_in = True
+            lcd.lcd_clear()
+            lcd.lcd_display_string("Access Granted", 1)
+            lcd.lcd_display_string("Press # to log out", 2)
+            print("Admin access granted.")
+            send_telegram_message("Admin logged in successfully.")
+            if key_pressed=='#':
+                admin_logged_in = False
+                lcd.lcd_clear()
+                admin_lcd_output()
+        else:
+            lcd.lcd_clear()
+            lcd.lcd_display_string("Access Denied", 1)
+            print("Admin access denied.")
+            send_telegram_message("Failed admin login attempt.")
+        entered_passcode = ""  # Reset passcode buffer
+
+# Modify the key_pressed function to loop back to admin login on logout
+def key_pressed(key):
+    global admin_logged_in
+
+    if not admin_logged_in:
+        # If admin is not logged in, check for admin login
+        handle_admin_login(key)
+        return
+
+    # Admin functionalities start here
+    if key == "#":
+        # Log out the admin
+        admin_logged_in = False
+        lcd.lcd_clear()
+        lcd.lcd_display_string("Logged Out", 1)
+        time.sleep(2)
+        admin_lcd_output()  # Redirect to admin login
+        return
+
+    # Admin-specific functionality can be added here
+    lcd.lcd_clear()
+    lcd.lcd_display_string("Admin Logged In", 1)
+    lcd.lcd_display_string("Press # to log out", 2)
+
+
 # Function to send Telegram message
 def send_telegram_message(message):
     try:
@@ -39,23 +101,6 @@ def send_telegram_message(message):
 def map_adc_to_angle(adc_value):
     return int((adc_value / 1023) * 180)
 
-#Call back function invoked when any key on keypad is pressed
-def key_pressed(key):
-
-    lcd.lcd_clear()
-    lcd.lcd_display_string("LED Control", 1)
-
-    if key ==1:
-        lcd.lcd_display_string("Blink LED",2)
-        print("press_1")
-        led_ctrl.led_control_init()
-       
-    elif key ==0:
-        lcd.lcd_display_string("OFF LED",1)
-        led_ctrl.set_delay(0)
-     
-
-
 
 def main():
 
@@ -66,9 +111,8 @@ def main():
     servo.init()
     potentio.init()
 
-    # Display something on LCD
-    lcd.lcd_display_string("LED Control ", 1)
-    lcd.lcd_display_string("0: Off 1:Blink", 2)
+    # Display initial message on LCD
+    lcd.lcd_display_string("Admin Login", 1)
 
     # Initialize the HAL keypad driver
     keypad.init(key_pressed)
